@@ -73,7 +73,15 @@ def run_screener_query(query_string):
 
     with sync_playwright() as p:
         # Launch browser (set headless=True if you don't want to see the browser pop up)
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu"
+            ]
+        )
         context = browser.new_context()
         page = context.new_page()
 
