@@ -1,13 +1,21 @@
 import streamlit as st
 import pandas as pd
-import os
-import sys
+import os, sys, subprocess
 import asyncio
 from dotenv import load_dotenv
 
 # --- PLAYWRIGHT CLOUD FIX ---
 # Forces Streamlit Cloud to install the Chromium browser binary
-os.system("playwright install chromium")
+# --- PLAYWRIGHT CLOUD FIX (RUNS ONLY ONCE) ---
+@st.cache_resource(show_spinner="Booting Cloud Browser Environment...")
+def install_playwright():
+    """Ensures Playwright is installed exactly once per server boot."""
+    try:
+        subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
+    except Exception as e:
+        print(f"Failed to install Playwright: {e}")
+
+install_playwright()
 
 # --- WINDOWS ASYNCIO BUG FIX ---
 if sys.platform == "win32":
