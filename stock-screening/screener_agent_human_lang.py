@@ -72,7 +72,6 @@ def run_screener_query(query_string):
     print(f"\nExecuting Query on Screener.in: {query_string}")
 
     with sync_playwright() as p:
-        # Launch browser (set headless=True if you don't want to see the browser pop up)
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -89,74 +88,69 @@ def run_screener_query(query_string):
         page = context.new_page()
 
         try:
-            # 1. Login to Screener.in using Environment Variables
             print("Logging in to Screener.in...")
             page.goto("https://www.screener.in/login/")
 
-            email = os.getenv("SCREENER_EMAIL")
-            password = os.getenv("SCREENER_PASSWORD")
-
-            if not email or not password:
-                print("Error: SCREENER_EMAIL or SCREENER_PASSWORD not found in environment variables.")
-                return None
+            # Use os.environ, fallback to streamlit secrets just in case
+            email = os.environ.get("SCREENER_EMAIL")
+            password = os.environ.get("SCREENER_PASSWORD")
 
             page.fill("input[name='username']", email)
             page.fill("input[name='password']", password)
             page.click("button[type='submit']")
             page.wait_for_load_state("networkidle")
 
-            # 2. Navigate to the Raw Query page & execute
             print("Running query...")
             page.goto("https://www.screener.in/screen/raw/")
             page.fill("textarea[name='query']", query_string)
             page.click("button:has-text('Run this query')")
 
+            # Take a screenshot immediately after clicking run, just to have a record
+            page.screenshot(path="debug_cloud_error.png")
+
             all_dfs = []
             page_number = 1
 
-            # 3. Pagination Loop
             while True:
                 print(f"Scraping Page {page_number}...")
 
-                # Wait for the table to load
-                page.wait_for_selector("table.data-table", timeout=60000)
+                # Wait for the table to load (increased to 30 seconds for slow cloud servers)
+                page.wait_for_selector("table.data-table", timeout=30000)
                 html = page.content()
 
-                # Parse the HTML table
+                from io import StringIO
                 soup = BeautifulSoup(html, "html.parser")
                 table = soup.find("table", class_="data-table")
                 df = pd.read_html(StringIO(str(table)))[0]
 
-                # Clean up S.No. column immediately
                 if 'S.No.' in df.columns:
                     df = df.drop(columns=['S.No.'])
 
                 all_dfs.append(df)
 
-                # Check for the "Next" pagination button
                 next_button = page.locator("a", has_text="Next").first
 
                 if next_button.is_visible():
                     next_button.click()
                     page.wait_for_load_state("networkidle")
-                    page.wait_for_timeout(1000) # 1-second buffer to allow DOM to re-render
+                    page.wait_for_timeout(1000)
                     page_number += 1
                 else:
-                    print("Reached the last page.")
                     break
 
-            # 4. Combine all pages into a single DataFrame
             final_df = pd.concat(all_dfs, ignore_index=True)
-
-            # 5. Clean Data: Remove duplicate rows and Screener's 'Median'/'Average' summary rows
             final_df = final_df[~final_df['Name'].astype(str).str.contains("Median|Average", na=False)]
             final_df = final_df.drop_duplicates(subset=['Name']).reset_index(drop=True)
+
+            # If it succeeds, delete the debug image so it doesn't show up
+            if os.path.exists("debug_cloud_error.png"):
+                os.remove("debug_cloud_error.png")
 
             return final_df
 
         except Exception as e:
             print(f"Error during execution: {e}")
-            # Take a screenshot so we can see if there is a Captcha or Login error
+            # TAKE A PICTURE OF THE CRASH
             page.screenshot(path="debug_cloud_error.png")
             return None
 

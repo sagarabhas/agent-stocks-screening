@@ -69,7 +69,13 @@ with tab1:
                     st.session_state.fundamental_df = df
                     status.update(label=f"✅ Found {len(df)} stocks!", state="complete")
                 else:
-                    status.update(label="❌ No stocks found.", state="error")
+                    status.update(label="❌ No stocks found or scraper blocked.", state="error")
+
+                    # --- NEW VISUAL DEBUGGER ---
+                    if os.path.exists("debug_cloud_error.png"):
+                        st.error("⚠️ The cloud bot hit a roadblock. Here is exactly what the bot saw:")
+                        st.image("debug_cloud_error.png", width=800)
+                        os.remove("debug_cloud_error.png") # Clean up
 
     if st.session_state.fundamental_df is not None:
         st.dataframe(st.session_state.fundamental_df, width="stretch")
