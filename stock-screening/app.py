@@ -4,15 +4,14 @@ import os, sys, subprocess
 import asyncio
 from dotenv import load_dotenv
 
-# Forces Streamlit Cloud to install the Chromium browser binary
 # --- PLAYWRIGHT CLOUD FIX (RUNS ONLY ONCE) ---
 @st.cache_resource(show_spinner="Booting Cloud Browser Environment...")
 def install_playwright():
     """Ensures Playwright is installed exactly once per server boot."""
     try:
-        # FIX: Use sys.executable to point to the correct virtual environment!
+        # Install the Chromium binary.
         subprocess.run([f"{sys.executable}", "-m", "playwright", "install", "chromium"], check=True)
-        subprocess.run([f"{sys.executable}", "-m", "playwright", "install-deps"], check=True) # Adding install-deps just to be extra safe
+        # REMOVED the install-deps line!
     except Exception as e:
         print(f"Failed to install Playwright: {e}")
 
