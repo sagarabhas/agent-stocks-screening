@@ -149,9 +149,19 @@ def run_screener_query(query_string):
             return final_df
 
         except Exception as e:
-            print(f"Error during execution: {e}")
-            # TAKE A PICTURE OF THE CRASH
-            page.screenshot(path="debug_cloud_error.png")
+            error_msg = f"Type: {type(e).__name__} | Details: {str(e)}"
+            print(f"Error during execution: {error_msg}")
+
+            # Write the exact error to a text file
+            with open("cloud_error.txt", "w") as f:
+                f.write(error_msg)
+
+            try:
+                # Try to take a picture, but don't crash if the page is dead
+                page.screenshot(path="debug_cloud_error.png")
+            except:
+                pass
+
             return None
 
         finally:

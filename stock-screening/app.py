@@ -71,10 +71,17 @@ with tab1:
                 else:
                     status.update(label="❌ No stocks found or scraper blocked.", state="error")
 
-                    # --- NEW VISUAL DEBUGGER ---
+                    # --- TEXT DEBUGGER ---
+                    if os.path.exists("cloud_error.txt"):
+                        with open("cloud_error.txt", "r") as f:
+                            st.error(f"🛑 THE BOT CRASHED BECAUSE: {f.read()}")
+                        # os.remove("cloud_error.txt") # Clean up
+
+                    # --- VISUAL DEBUGGER ---
                     if os.path.exists("debug_cloud_error.png"):
-                        st.error("⚠️ The cloud bot hit a roadblock. Here is exactly what the bot saw:")
-                        st.image("debug_cloud_error.png", width=800)
+                        # We use a timestamp to stop Streamlit from showing you a cached white image!
+                        import time
+                        st.image("debug_cloud_error.png", width=800, caption=f"Screenshot at {time.time()}")
 
     if st.session_state.fundamental_df is not None:
         st.dataframe(st.session_state.fundamental_df, width="stretch")
