@@ -82,7 +82,10 @@ def run_screener_query(query_string):
                 "--disable-gpu"
             ]
         )
-        context = browser.new_context()
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080}
+        )
         page = context.new_page()
 
         try:
@@ -116,7 +119,7 @@ def run_screener_query(query_string):
                 print(f"Scraping Page {page_number}...")
 
                 # Wait for the table to load
-                page.wait_for_selector("table.data-table", timeout=10000)
+                page.wait_for_selector("table.data-table", timeout=60000)
                 html = page.content()
 
                 # Parse the HTML table
@@ -153,6 +156,8 @@ def run_screener_query(query_string):
 
         except Exception as e:
             print(f"Error during execution: {e}")
+            # Take a screenshot so we can see if there is a Captcha or Login error
+            page.screenshot(path="debug_cloud_error.png")
             return None
 
         finally:
