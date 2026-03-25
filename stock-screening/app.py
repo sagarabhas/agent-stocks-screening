@@ -50,81 +50,81 @@ tab1, tab2, tab3 = st.tabs(["1️⃣ Fundamental Screener", "2️⃣ Technical E
 # ==========================================
 # TAB 1: FUNDAMENTAL SCREENING
 # ==========================================
-# with tab1:
-#     st.header("Step 1: Fundamental Screening")
-#     user_strategy = st.text_area("Describe your fundamental strategy:", placeholder="e.g., High growth midcaps with zero debt...")
-#
-#     if st.button("Run Fundamental Screen", type="primary"):
-#         st.session_state.fund_strategy_text = user_strategy # Save for the RAG prompt later
-#
-#         with st.status("Running Fundamental Pipeline...", expanded=True) as status:
-#             st.write("Translating strategy...")
-#             syntax = generate_screener_syntax(user_strategy)
-#
-#             if syntax:
-#                 st.write(f"Scraping Screener.in for: {syntax}")
-#                 df = run_screener_query(syntax)
-#
-#                 if df is not None and not df.empty:
-#                     st.session_state.fundamental_df = df
-#                     status.update(label=f"✅ Found {len(df)} stocks!", state="complete")
-#                 else:
-#                     status.update(label="❌ No stocks found or scraper blocked.", state="error")
-#
-#                     # --- TEXT DEBUGGER ---
-#                     if os.path.exists("cloud_error.txt"):
-#                         with open("cloud_error.txt", "r") as f:
-#                             st.error(f"🛑 THE BOT CRASHED BECAUSE: {f.read()}")
-#                         # os.remove("cloud_error.txt") # Clean up
-#
-#                     # --- VISUAL DEBUGGER ---
-#                     if os.path.exists("debug_cloud_error.png"):
-#                         # We use a timestamp to stop Streamlit from showing you a cached white image!
-#                         import time
-#                         st.image("debug_cloud_error.png", width=800, caption=f"Screenshot at {time.time()}")
-#
-#     if st.session_state.fundamental_df is not None:
-#         st.dataframe(st.session_state.fundamental_df, width="stretch")
+with tab1:
+    st.header("Step 1: Fundamental Screening")
+    user_strategy = st.text_area("Describe your fundamental strategy:", placeholder="e.g., High growth midcaps with zero debt...")
+
+    if st.button("Run Fundamental Screen", type="primary"):
+        st.session_state.fund_strategy_text = user_strategy # Save for the RAG prompt later
+
+        with st.status("Running Fundamental Pipeline...", expanded=True) as status:
+            st.write("Translating strategy...")
+            syntax = generate_screener_syntax(user_strategy)
+
+            if syntax:
+                st.write(f"Scraping Screener.in for: {syntax}")
+                df = run_screener_query(syntax)
+
+                if df is not None and not df.empty:
+                    st.session_state.fundamental_df = df
+                    status.update(label=f"✅ Found {len(df)} stocks!", state="complete")
+                else:
+                    status.update(label="❌ No stocks found or scraper blocked.", state="error")
+
+                    # --- TEXT DEBUGGER ---
+                    if os.path.exists("cloud_error.txt"):
+                        with open("cloud_error.txt", "r") as f:
+                            st.error(f"🛑 THE BOT CRASHED BECAUSE: {f.read()}")
+                        # os.remove("cloud_error.txt") # Clean up
+
+                    # --- VISUAL DEBUGGER ---
+                    if os.path.exists("debug_cloud_error.png"):
+                        # We use a timestamp to stop Streamlit from showing you a cached white image!
+                        import time
+                        st.image("debug_cloud_error.png", width=800, caption=f"Screenshot at {time.time()}")
+
+    if st.session_state.fundamental_df is not None:
+        st.dataframe(st.session_state.fundamental_df, width="stretch")
 
 # ==========================================
 # TAB 1: FUNDAMENTAL SCREENING (Hybrid Upload)
 # ==========================================
-with tab1:
-    st.header("Step 1: Fundamental Screening")
-    st.markdown("""
-    **To bypass cloud IP blocks, we use a hybrid ingestion method.**
-    1. Go to [Screener.in](https://www.screener.in/screen/raw/) and run your fundamental query.
-    2. Click the **'Export to Excel/CSV'** button.
-    3. Upload that file here.
-    """)
-
-    # Drag and drop file uploader
-    uploaded_file = st.file_uploader("Upload your Screener.in CSV/Excel file", type=["csv", "xlsx"])
-
-    # Also save the strategy text so Tab 3 (RAG) knows what you are doing
-    user_strategy = st.text_input("For the AI's context, briefly describe the fundamental strategy you used:")
-
-    if uploaded_file is not None:
-        try:
-            # Read the uploaded file (handles both CSV and Excel)
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file)
-
-            # Clean up the Screener.in specific formatting
-            if 'S.No.' in df.columns:
-                df = df.drop(columns=['S.No.'])
-
-            # Save to session state so Tab 2 can grab it!
-            st.session_state.fundamental_df = df
-            st.session_state.fund_strategy_text = user_strategy
-
-            st.success(f"✅ Successfully ingested {len(df)} stocks! You can now move to Tab 2.")
-            st.dataframe(df, width="stretch")
-
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
+# with tab1:
+#     st.header("Step 1: Fundamental Screening")
+#     st.markdown("""
+#     **To bypass cloud IP blocks, we use a hybrid ingestion method.**
+#     1. Go to [Screener.in](https://www.screener.in/screen/raw/) and run your fundamental query.
+#     2. Click the **'Export to Excel/CSV'** button.
+#     3. Upload that file here.
+#     """)
+#
+#     # Drag and drop file uploader
+#     uploaded_file = st.file_uploader("Upload your Screener.in CSV/Excel file", type=["csv", "xlsx"])
+#
+#     # Also save the strategy text so Tab 3 (RAG) knows what you are doing
+#     user_strategy = st.text_input("For the AI's context, briefly describe the fundamental strategy you used:")
+#
+#     if uploaded_file is not None:
+#         try:
+#             # Read the uploaded file (handles both CSV and Excel)
+#             if uploaded_file.name.endswith('.csv'):
+#                 df = pd.read_csv(uploaded_file)
+#             else:
+#                 df = pd.read_excel(uploaded_file)
+#
+#             # Clean up the Screener.in specific formatting
+#             if 'S.No.' in df.columns:
+#                 df = df.drop(columns=['S.No.'])
+#
+#             # Save to session state so Tab 2 can grab it!
+#             st.session_state.fundamental_df = df
+#             st.session_state.fund_strategy_text = user_strategy
+#
+#             st.success(f"✅ Successfully ingested {len(df)} stocks! You can now move to Tab 2.")
+#             st.dataframe(df, width="stretch")
+#
+#         except Exception as e:
+#             st.error(f"Error reading file: {e}")
 
 # ==========================================
 # TAB 2: TECHNICAL ENGINE
