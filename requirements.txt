@@ -1,0 +1,11 @@
+streamlit
+pandas
+playwright
+groq
+beautifulsoup4
+python-dotenv
+yfinance
+pandas-ta
+numba<2.3
+lxml
+curl_cffi
