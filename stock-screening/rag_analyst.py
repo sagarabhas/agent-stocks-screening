@@ -2,6 +2,9 @@ import os
 import pandas as pd
 import urllib.request
 import urllib.parse
+import urllib.parse
+import urllib.request
+import yfinance as yf
 import xml.etree.ElementTree as ET
 from groq import Groq
 from dotenv import load_dotenv
@@ -13,15 +16,34 @@ def fetch_google_news(ticker, num_articles=5):
     """
     Retrieves the latest news headlines for a given stock using Google News RSS.
     """
-    # Clean the ticker (e.g., 'RELIANCE.NS' -> 'RELIANCE')
-    clean_name = ticker.replace('.NS', '').replace('.BO', '')
-    query = f"{clean_name} stock news India"
+    # 1. Base fallback ticker
+    clean_ticker = ticker.replace('.NS', '').replace('.BO', '')
+    search_term = clean_ticker
+
+    # 2. GET THE REAL COMPANY NAME
+    try:
+        # Fetch official company name from Yahoo Finance
+        info = yf.Ticker(ticker).info
+        if 'longName' in info and info['longName']:
+            # Strip out generic corporate suffixes to make the news search cleaner
+            long_name = info['longName']
+            for suffix in [" Limited", " Ltd.", " Ltd", " L.t.d", " Corporation", " Inc."]:
+                long_name = long_name.replace(suffix, "")
+
+            search_term = long_name.strip()
+    except Exception as e:
+        print(f"  [!] Could not fetch long name for {ticker}, falling back to ticker: {e}")
+
+    # 3. STRICT SEARCH QUERY
+    # We wrap the search term in quotes so Google does an exact match!
+    # e.g., '"Valiant Communications" stock news India'
+    query = f'"{search_term}" stock news India'
 
     # URL encode the query and format for Indian localized news
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
 
-    print(f"  -> Fetching news for {clean_name}...")
+    print(f"  -> Fetching news for: {search_term} ({ticker})...")
 
     try:
         # We use a standard User-Agent so Google doesn't block the request
@@ -38,6 +60,9 @@ def fetch_google_news(ticker, num_articles=5):
             title = item.find('title').text
             pub_date = item.find('pubDate').text
             articles.append(f"- {pub_date}: {title}")
+
+        if not articles:
+            return f"No recent news found for exactly '{search_term}'."
 
         return "\n".join(articles)
 
