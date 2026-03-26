@@ -3,6 +3,8 @@ import pandas as pd
 import os, sys, subprocess
 import asyncio
 from dotenv import load_dotenv
+
+from ai_engine import generate_master_strategy
 from backtest_engine import run_vectorized_backtest, analyze_backtest_with_ai, run_grid_search_optimization, optimize_strategy_with_ai
 from notifier import send_telegram_alert
 
@@ -51,18 +53,54 @@ if 'fund_strategy_text' not in st.session_state:
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Fundamentals", "📈 Technicals", "🤖 AI Analyst", "🧪 Backtesting"])
 
 # ==========================================
+# 🤖 MASTER AI STRATEGIST (Place right above Tab 1)
+# ==========================================
+with st.expander("🤖 Agentic Idea Generator: Chat-to-Portfolio", expanded=False):
+    st.markdown("Type a trading idea in plain English. The AI will instantly generate the Fundamental Screener and Technical Math for you.")
+
+    user_idea = st.text_area("What is your trading strategy?", placeholder="e.g., 'Find me highly liquid dividend-paying mega-caps that are currently crashing and severely oversold.'")
+
+    if st.button("✨ Generate Strategy", type="primary"):
+        with st.spinner("Translating idea into Quantitative Math..."):
+
+            # Call the LLM to generate the JSON
+            strategy_dict = generate_master_strategy(user_idea)
+
+            if "error" not in strategy_dict:
+                # Save the exact math to memory
+                st.session_state.auto_fundamental = strategy_dict.get("fundamental", "")
+                st.session_state.auto_technical = strategy_dict.get("technical", "")
+
+                st.success("✅ Strategy Generated! The inputs in Tab 1 and Tab 2 have been auto-filled.")
+                st.info(f"**AI Rationale:** {strategy_dict.get('explanation', '')}")
+
+                st.code(f"Fundamental: {st.session_state.auto_fundamental}")
+                st.code(f"Technical: {st.session_state.auto_technical}")
+            else:
+                st.error(f"Failed to generate strategy: {strategy_dict['error']}")
+
+# ==========================================
 # TAB 1: FUNDAMENTAL SCREENING
 # ==========================================
 with tab1:
     st.header("Step 1: Fundamental Screening")
-    user_strategy = st.text_area("Describe your fundamental strategy:", placeholder="e.g., High growth midcaps with zero debt...")
+
+    # 1. Grab the AI-generated query if it exists
+    default_fund = st.session_state.get("auto_fundamental", "")
+    user_strategy = st.text_area("Describe your fundamental strategy (or use auto-generated logic):", value=default_fund, placeholder="e.g., High growth midcaps with zero debt...")
 
     if st.button("Run Fundamental Screen", type="primary"):
         st.session_state.fund_strategy_text = user_strategy # Save for the RAG prompt later
 
         with st.status("Running Fundamental Pipeline...", expanded=True) as status:
-            st.write("Translating strategy...")
-            syntax = generate_screener_syntax(user_strategy)
+
+            # 2. SMART BYPASS: Don't re-translate if it's already raw Screener math!
+            if "AND" in user_strategy or ">" in user_strategy or "<" in user_strategy:
+                st.write("Raw syntax detected. Skipping AI translation...")
+                syntax = user_strategy
+            else:
+                st.write("Translating English to Screener syntax...")
+                syntax = generate_screener_syntax(user_strategy)
 
             if syntax:
                 st.write(f"Scraping Screener.in for: {syntax}")
@@ -78,56 +116,14 @@ with tab1:
                     if os.path.exists("cloud_error.txt"):
                         with open("cloud_error.txt", "r") as f:
                             st.error(f"🛑 THE BOT CRASHED BECAUSE: {f.read()}")
-                        # os.remove("cloud_error.txt") # Clean up
 
                     # --- VISUAL DEBUGGER ---
                     if os.path.exists("debug_cloud_error.png"):
-                        # We use a timestamp to stop Streamlit from showing you a cached white image!
                         import time
                         st.image("debug_cloud_error.png", width=800, caption=f"Screenshot at {time.time()}")
 
     if st.session_state.fundamental_df is not None:
         st.dataframe(st.session_state.fundamental_df, width="stretch")
-
-# ==========================================
-# TAB 1: FUNDAMENTAL SCREENING (Hybrid Upload)
-# ==========================================
-# with tab1:
-#     st.header("Step 1: Fundamental Screening")
-#     st.markdown("""
-#     **To bypass cloud IP blocks, we use a hybrid ingestion method.**
-#     1. Go to [Screener.in](https://www.screener.in/screen/raw/) and run your fundamental query.
-#     2. Click the **'Export to Excel/CSV'** button.
-#     3. Upload that file here.
-#     """)
-#
-#     # Drag and drop file uploader
-#     uploaded_file = st.file_uploader("Upload your Screener.in CSV/Excel file", type=["csv", "xlsx"])
-#
-#     # Also save the strategy text so Tab 3 (RAG) knows what you are doing
-#     user_strategy = st.text_input("For the AI's context, briefly describe the fundamental strategy you used:")
-#
-#     if uploaded_file is not None:
-#         try:
-#             # Read the uploaded file (handles both CSV and Excel)
-#             if uploaded_file.name.endswith('.csv'):
-#                 df = pd.read_csv(uploaded_file)
-#             else:
-#                 df = pd.read_excel(uploaded_file)
-#
-#             # Clean up the Screener.in specific formatting
-#             if 'S.No.' in df.columns:
-#                 df = df.drop(columns=['S.No.'])
-#
-#             # Save to session state so Tab 2 can grab it!
-#             st.session_state.fundamental_df = df
-#             st.session_state.fund_strategy_text = user_strategy
-#
-#             st.success(f"✅ Successfully ingested {len(df)} stocks! You can now move to Tab 2.")
-#             st.dataframe(df, width="stretch")
-#
-#         except Exception as e:
-#             st.error(f"Error reading file: {e}")
 
 # ==========================================
 # TAB 2: TECHNICAL ENGINE
@@ -140,7 +136,11 @@ with tab2:
         st.warning("⚠️ Please run the Fundamental Screener in Tab 1 first.")
     else:
         st.success(f"Ready to run technicals on {len(st.session_state.fundamental_df)} stocks.")
-        tech_strategy = st.text_input("Enter your technical strategy:", placeholder="e.g., Price above 50 SMA and RSI > 50")
+
+        # 1. Grab the AI-generated query if it exists
+        default_tech = st.session_state.get("auto_technical", "")
+        # Changed to text_area so you can easily see long generated queries
+        tech_strategy = st.text_area("Enter your technical strategy (or use auto-generated Pandas logic):", value=default_tech, placeholder="e.g., Close > SMA_50 and RSI_14 > 50")
 
         if st.button("Run Technical Engine", type="primary"):
             if not tech_strategy:
@@ -157,7 +157,7 @@ with tab2:
                     tickers.append(ticker)
                     progress_bar.progress((i + 1) / len(names))
 
-                # Save to CSV so ingestion script can use it
+                # Save to CSV
                 st.session_state.fundamental_df['Ticker'] = tickers
                 st.session_state.fundamental_df.to_csv("step1_with_tickers.csv", index=False)
                 st.write(f"✅ Resolved {len([t for t in tickers if t])} valid tickers.")
@@ -167,9 +167,17 @@ with tab2:
                     fetch_ohlcv_data("step1_with_tickers.csv", "stock_data")
                     st.write("✅ Data downloaded to local Data Lake.")
 
-                # 3. AI Math Translation
-                with st.spinner("🧠 **3. Translating Technical Strategy...**"):
-                    pandas_query = generate_pandas_query(tech_strategy)
+                # 3. AI Math Translation & SMART BYPASS
+                with st.spinner("🧠 **3. Processing Technical Strategy...**"):
+
+                    # Don't re-translate if it's already Pandas math!
+                    if ">" in tech_strategy or "<" in tech_strategy or "==" in tech_strategy:
+                        st.write("Raw Pandas logic detected. Skipping AI translation...")
+                        pandas_query = tech_strategy
+                    else:
+                        st.write("Translating English to Pandas logic...")
+                        pandas_query = generate_pandas_query(tech_strategy)
+
                     st.session_state.tech_query = pandas_query
                     st.code(pandas_query, language="python")
 
