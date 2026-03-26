@@ -4,8 +4,10 @@ import numpy as np
 import pandas_ta as ta
 import datetime
 import os
+import streamlit as st
 from groq import Groq
 
+@st.cache_data(ttl=3600)
 def run_vectorized_backtest(tickers, years, strategy_type, custom_query=None, stop_loss_pct=0.0, take_profit_pct=0.0, oos_split=0.0):
     """
     Downloads historical data, calculates AI-required features, and applies dynamic strategies.
