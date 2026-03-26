@@ -15,7 +15,18 @@ def generate_master_strategy(user_idea):
         You must translate this idea into TWO separate queries:
         
         1. FUNDAMENTAL QUERY (For Screener.in): 
-        Use exact variables like 'Market Capitalization', 'Return on equity', 'Dividend yield', 'Quarterly profit growth', 'Average volume'. Use 'AND' to separate.
+        You MUST use these EXACT variable names (case-sensitive) and separate conditions with 'AND':
+        - Market Capitalization
+        - Return on equity
+        - Return on capital employed
+        - Dividend yield
+        - YOY Quarterly profit growth (NEVER use "Quarterly profit growth")
+        - YOY Quarterly sales growth
+        - Profit growth 3Years
+        - Sales growth 3Years
+        - Debt to equity
+        - Price to Earning
+        - Volume
         
         2. TECHNICAL QUERY (For Pandas Backtester):
         Available variables: Close, Open, High, Low, Volume, SMA_20, SMA_50, SMA_150, SMA_200, RSI_14, MACD, MACD_Histogram, High_52week, Low_52week, Volume_SMA_20.
@@ -23,13 +34,6 @@ def generate_master_strategy(user_idea):
         
         OUTPUT FORMAT: 
         You MUST output ONLY a valid JSON object with exactly three keys: "fundamental", "technical", and "explanation". Do not include markdown blocks or any other text.
-        
-        Example Output:
-        {
-            "fundamental": "Market Capitalization > 10000 AND Return on equity > 15",
-            "technical": "Close > SMA_200 and RSI_14 < 40",
-            "explanation": "This targets high-quality large caps experiencing a short-term oversold pullback."
-        }
         """
 
         response = client.chat.completions.create(
