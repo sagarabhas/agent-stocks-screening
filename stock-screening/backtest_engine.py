@@ -6,7 +6,7 @@ import datetime
 import os
 from groq import Groq
 
-def run_vectorized_backtest(tickers, years, strategy_type, custom_query=None, stop_loss_pct=0.0, take_profit_pct=0.0):
+def run_vectorized_backtest(tickers, years, strategy_type, custom_query=None, stop_loss_pct=0.0, take_profit_pct=0.0, oos_split=0.0):
     """
     Downloads historical data, calculates AI-required features, and applies dynamic strategies.
     """
@@ -121,49 +121,63 @@ def run_vectorized_backtest(tickers, years, strategy_type, custom_query=None, st
             all_equity_curves[f"{ticker} (Hold)"] = df_backtest['Cumulative_Hold']
             all_equity_curves[f"{ticker} (Strategy)"] = df_backtest['Cumulative_Strategy']
 
-            # 6. Calculate Metrics & Institutional Risk
+            # 6. Calculate Metrics, Walk-Forward, and Kelly Criterion
             total_strategy_return = (df_backtest['Cumulative_Strategy'].iloc[-1] - 1) * 100
             total_hold_return = (df_backtest['Cumulative_Hold'].iloc[-1] - 1) * 100
 
-            # Max Drawdown
             rolling_max = df_backtest['Cumulative_Strategy'].cummax()
-            drawdown = df_backtest['Cumulative_Strategy'] / rolling_max - 1.0
-            max_drawdown = drawdown.min() * 100
+            max_drawdown = (df_backtest['Cumulative_Strategy'] / rolling_max - 1.0).min() * 100
 
-            # --- NEW: INSTITUTIONAL RISK METRICS ---
             daily_returns = df_backtest['Strategy_Return']
             days_in_market = (df_backtest['Position'] == 1).sum()
 
             if days_in_market > 0:
-                # Annualized Return and Volatility (Assuming 252 trading days in a year)
                 ann_return = daily_returns.mean() * 252
                 ann_volatility = daily_returns.std() * np.sqrt(252)
-
-                # Sharpe Ratio (Assuming 0% risk-free rate for pure strategy evaluation)
                 sharpe_ratio = ann_return / ann_volatility if ann_volatility != 0 else 0
 
-                # Sortino Ratio (Only penalizes negative returns)
-                downside_returns = daily_returns[daily_returns < 0]
-                downside_volatility = downside_returns.std() * np.sqrt(252)
-                sortino_ratio = ann_return / downside_volatility if downside_volatility != 0 and not pd.isna(downside_volatility) else 0
-
-                # Win Rate (Percentage of invested days that were positive)
                 winning_days = (daily_returns > 0).sum()
-                win_rate = (winning_days / days_in_market) * 100
+                win_rate = winning_days / days_in_market
+
+                # --- NEW: KELLY CRITERION (POSITION SIZING) ---
+                avg_win = daily_returns[daily_returns > 0].mean() if winning_days > 0 else 0
+                avg_loss = abs(daily_returns[daily_returns < 0].mean()) if (days_in_market - winning_days) > 0 else 0
+
+                if avg_loss > 0:
+                    reward_risk = avg_win / avg_loss
+                    # Calculate the raw Kelly fraction
+                    kelly_pct = win_rate - ((1 - win_rate) / reward_risk)
+
+                    # FULL KELLY: No division by 2. We just floor it at 0% so it doesn't tell you to short.
+                    target_kelly = max(0, kelly_pct * 100)
+                else:
+                    target_kelly = 100 if win_rate > 0 else 0 # 100% win rate edge case
             else:
                 sharpe_ratio = 0
-                sortino_ratio = 0
                 win_rate = 0
+                target_kelly = 0
+
+            # --- NEW: WALK-FORWARD VALIDATION (OOS TEST) ---
+            oos_return_str = "N/A"
+            if oos_split > 0:
+                split_idx = int(len(df_backtest) * (1 - oos_split))
+                df_oos = df_backtest.iloc[split_idx:].copy()
+
+                if not df_oos.empty:
+                    df_oos['OOS_Cumulative'] = (1 + df_oos['Strategy_Return']).cumprod()
+                    oos_return = (df_oos['OOS_Cumulative'].iloc[-1] - 1) * 100
+                    oos_return_str = f"{oos_return:.2f}%"
 
             # Append everything to the final table
             metrics_list.append({
                 "Ticker": ticker,
-                "Strategy Return": f"{total_strategy_return:.2f}%",
-                "Buy & Hold Return": f"{total_hold_return:.2f}%",
-                "Max Drawdown": f"{max_drawdown:.2f}%",
+                "Total Return": f"{total_strategy_return:.2f}%",
+                "Buy & Hold": f"{total_hold_return:.2f}%",
+                "Max DD": f"{max_drawdown:.2f}%",
                 "Sharpe": f"{sharpe_ratio:.2f}",
-                "Sortino": f"{sortino_ratio:.2f}",
-                "Win Rate": f"{win_rate:.1f}%"
+                "Win Rate": f"{win_rate*100:.1f}%",
+                "Rec. Allocation (Full Kelly)": f"{target_kelly:.1f}%", # Updated Label!
+                "Out-of-Sample Return": oos_return_str
             })
 
         except Exception as e:
@@ -172,21 +186,48 @@ def run_vectorized_backtest(tickers, years, strategy_type, custom_query=None, st
     metrics_df = pd.DataFrame(metrics_list) if metrics_list else pd.DataFrame()
     return all_equity_curves, metrics_df
 
-def analyze_backtest_with_ai(metrics_df, tickers, strategy_type):
+def analyze_backtest_with_ai(metrics_df, tickers, strategy_name):
     """
-    Passes the backtest results to the native Groq API for quantitative analysis.
+    Sends the backtest results to an LLM for a professional quantitative review,
+    now including Walk-Forward and Kelly Criterion analysis.
     """
+    from groq import Groq
+    import os
+
     try:
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        prompt = f"Act as a quantitative analyst. I backtested {tickers} using {strategy_type}. Here are the results: {metrics_df.to_dict()}. Briefly analyze if this is a safe strategy to deploy live, focusing on the relationship between Total Return and Max Drawdown."
+
+        # Convert the dataframe to a string format the LLM can easily read
+        metrics_str = metrics_df.to_string(index=False)
+
+        system_prompt = """
+        You are the Chief Quantitative Officer at an elite algorithmic trading firm. Your job is to bluntly evaluate backtest metrics for a proposed trading strategy.
+        
+        You must evaluate the strategy based on the following data points provided:
+        1. **Total Return vs Buy & Hold:** Did the active strategy actually beat the market, or did we take on extra risk for no reason?
+        2. **Max Drawdown & Sharpe Ratio:** Is the volatility acceptable? (Sharpe > 1.0 is good, > 2.0 is excellent).
+        3. **Out-of-Sample Return (Walk-Forward Validation):** This is the most critical metric. If the Total Return is high but the Out-of-Sample return is negative or "N/A", the strategy is over-fitted (curve-fit) to the past and will fail in live trading. Call this out aggressively.
+        4. **Rec. Allocation (Full Kelly):** This is the Kelly Criterion percentage. If it recommends 0%, the strategy is mathematically guaranteed to lose money over time. If it recommends > 25%, warn the user that Full Kelly is highly aggressive and they should expect massive volatility.
+
+        Output Format:
+        Use bolding and bullet points for readability. Be concise, mathematically rigorous, and do not sugarcoat bad strategies. End with a definitive "Verdict: [Pass / Fail / Needs Optimization]".
+        """
+
+        user_prompt = f"Strategy Name: {strategy_name}\nTarget Tickers: {tickers}\n\nHere are the backtest metrics:\n{metrics_str}\n\nProvide your brutal quantitative assessment."
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3 # Keep it analytical and grounded
         )
+
         return response.choices[0].message.content
+
     except Exception as e:
-        return f"AI Analysis failed: {e}"
+        return f"Error connecting to AI Analyst: {e}"
 
 def run_grid_search_optimization(ticker, years, fast_range, slow_range, stop_loss_pct=0.0, take_profit_pct=0.0):
     """
@@ -274,3 +315,50 @@ def run_grid_search_optimization(ticker, years, fast_range, slow_range, stop_los
     if not res_df.empty:
         res_df = res_df.sort_values(by="Sharpe Ratio", ascending=False).reset_index(drop=True)
     return res_df
+
+def optimize_strategy_with_ai(original_query, metrics_df, tickers):
+    """
+    Acts as a quantitative risk manager. Ingests backtest metrics and rewrites
+    the Pandas query to improve the Sharpe Ratio and reduce Drawdown.
+    """
+    from groq import Groq
+    import os
+
+    try:
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+        metrics_str = metrics_df.to_dict()
+
+        system_prompt = """
+        You are a quantitative risk manager and algorithmic trading expert. Your job is to mathematically OPTIMIZE an existing pandas query based on its backtest results.
+        Your goal is to increase the Sharpe Ratio and Win Rate, while significantly reducing the Max Drawdown.
+        
+        Available Columns: Close, Open, High, Low, Volume, SMA_20, SMA_50, SMA_150, SMA_200, RSI_14, MACD, MACD_Histogram, High_52week, Low_52week, Volume_SMA_20.
+        
+        Rules for Optimization:
+        1. DO NOT just blindly append 'and' conditions. This leads to over-fitting and zero trades.
+        2. TUNE EXISTING PARAMETERS: If the query uses `RSI_14 < 30`, maybe adjust it to `< 40` or `< 20`. If it uses `SMA_50`, maybe `SMA_20` or `SMA_150` works better for risk control.
+        3. REPLACE BAD LOGIC: If the original query is bleeding money, you have permission to delete the bad conditions and rewrite the logic to be smarter (e.g., swapping a pure mean-reversion strategy to a trend-following one).
+        4. Keep the final query elegant and concise. 
+        5. Output ONLY the raw pandas query string. NO markdown formatting, NO explanations, NO backticks.
+        """
+
+        user_prompt = f"Original Query: {original_query}\nBacktest Metrics for {tickers}: {metrics_str}\n\nProvide the optimized pandas query string to improve these metrics."
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1 # Very low temperature for strict mathematical output
+        )
+
+        # Clean the output to ensure it's a valid Pandas string
+        raw_query = response.choices[0].message.content.strip()
+        clean_query = raw_query.replace("```python", "").replace("```", "").replace("`", "").strip()
+
+        return clean_query
+
+    except Exception as e:
+        return f"Error: {e}"

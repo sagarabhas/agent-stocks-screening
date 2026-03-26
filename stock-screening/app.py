@@ -3,7 +3,8 @@ import pandas as pd
 import os, sys, subprocess
 import asyncio
 from dotenv import load_dotenv
-from backtest_engine import run_vectorized_backtest, analyze_backtest_with_ai, run_grid_search_optimization
+from backtest_engine import run_vectorized_backtest, analyze_backtest_with_ai, run_grid_search_optimization, optimize_strategy_with_ai
+from notifier import send_telegram_alert
 
 
 # --- PLAYWRIGHT CLOUD FIX (RUNS ONLY ONCE) ---
@@ -194,26 +195,56 @@ with tab3:
     else:
         st.success(f"Ready to analyze news for: {', '.join(st.session_state.technical_winners)}")
 
+        # ==========================================
+        # PHASE 1: DO THE WORK AND SAVE TO MEMORY
+        # ==========================================
         if st.button("Fetch News & Analyze", type="primary"):
             # Loop through the final winners
             for ticker in st.session_state.technical_winners:
-                with st.expander(f"📊 Analysis for {ticker}", expanded=True):
+                with st.spinner(f"Scraping news & generating AI report for {ticker}..."):
 
                     # 1. Fetch News
-                    with st.spinner("Scraping Google News RSS..."):
-                        news_context = fetch_google_news(ticker, num_articles=5)
+                    news_context = fetch_google_news(ticker, num_articles=5)
 
                     # 2. Generate RAG Analysis
-                    with st.spinner("Groq AI is analyzing the data..."):
-                        # Combine fundamental and technical strategies for the prompt context
-                        full_context = f"Fundamental: {st.session_state.fund_strategy_text} | Technical: {tech_strategy}"
-                        analysis = analyze_stock_with_rag(ticker, news_context, full_context)
+                    full_context = f"Fundamental: {st.session_state.fund_strategy_text} | Technical: {tech_strategy}"
+                    analysis = analyze_stock_with_rag(ticker, news_context, full_context)
 
-                    # Display the final output
-                    st.markdown(analysis)
+                    # 3. SAVE IT TO MEMORY (Crucial Step!)
+                    st.session_state[f"rag_analysis_{ticker}"] = analysis
+                    st.session_state[f"raw_news_{ticker}"] = news_context
+
+        # ==========================================
+        # PHASE 2: INDEPENDENT DISPLAY & TELEGRAM BUTTON
+        # ==========================================
+        # Because this is outside the "Fetch" button, it survives page refreshes!
+        for ticker in st.session_state.technical_winners:
+
+            # Check if memory exists for this ticker
+            if st.session_state.get(f"rag_analysis_{ticker}"):
+
+                with st.expander(f"📊 Analysis for {ticker}", expanded=True):
+                    # Display the saved output
+                    st.markdown(st.session_state[f"rag_analysis_{ticker}"])
+
+                    # --- NEW INDEPENDENT TELEGRAM BUTTON ---
+                    if st.button(f"📱 Send {ticker} Alert to Telegram", key=f"tg_{ticker}"):
+                        with st.spinner("Pushing to your phone..."):
+
+                            # Construct the message format
+                            tg_message = f"🚨 **QUANT ALERT: {ticker}** 🚨\n\n"
+                            tg_message += f"*AI Analyst Summary:*\n{st.session_state[f'rag_analysis_{ticker}']}\n\n"
+                            tg_message += f"Strategy: {tech_strategy}"
+
+                            result = send_telegram_alert(tg_message)
+
+                            if result == "Success":
+                                st.success("✅ Alert sent to your phone!")
+                            else:
+                                st.error(result)
 
                     with st.popover("View Raw News Sources"):
-                        st.text(news_context)
+                        st.text(st.session_state[f"raw_news_{ticker}"])
 
 # ==========================================
 # TAB 4: VECTORIZED BACKTESTING ENGINE
@@ -228,11 +259,10 @@ with tab4:
     test_tickers = st.session_state.get("technical_winners", [])
     custom_query = st.session_state.get("tech_query", None)
 
-    if not test_tickers:
-        st.warning("⚠️ Run Tab 2 to backtest your winners, or enter a manual ticker below:")
-        manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):", "RELIANCE.NS")
-        if manual_ticker:
-            test_tickers = [manual_ticker]
+    st.warning("⚠️ Run Tab 2 to backtest your winners, or enter a manual ticker below:")
+    manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):", "RELIANCE.NS")
+    if manual_ticker:
+        test_tickers = [manual_ticker]
 
     if test_tickers:
         st.success(f"Target Tickers: {', '.join(test_tickers)}")
@@ -240,23 +270,34 @@ with tab4:
         if mode == "Single Strategy Test":
             # --- EXISTING SINGLE STRATEGY CODE ---
             if custom_query:
+                st.info(f"**Loaded Custom AI Strategy:** `{custom_query}`")
                 strategy_options = ["Custom AI Strategy", "SMA Crossover (50 vs 200)", "RSI Mean Reversion (<30 Buy)"]
             else:
                 strategy_options = ["SMA Crossover (50 vs 200)", "RSI Mean Reversion (<30 Buy)"]
 
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
-                years = st.slider("Backtest Period (Years)", 1, 10, 3, key="single_yrs")
+                years = st.slider("Backtest Period (Years)", 1, 10, 4, key="single_yrs")
                 stop_loss = st.number_input("Hard Stop-Loss % (0 to disable)", min_value=0.0, max_value=100.0, value=8.0, step=1.0)
             with col2:
                 strategy_type = st.selectbox("Strategy to Test", strategy_options)
                 take_profit = st.number_input("Take-Profit % (0 to disable)", min_value=0.0, max_value=500.0, value=25.0, step=1.0)
+            with col3:
+                # NEW: Walk-Forward Toggle
+                st.markdown("**Walk-Forward Validation**")
+                oos_split = st.slider("Out-of-Sample Split %", min_value=0, max_value=50, value=25, step=5,
+                                      help="Reserves the final X% of the timeline as a blind test to prevent curve-fitting.")
 
-            if st.button("🚀 Run Vectorized Backtest", type="primary"):
+            # --- THE SINGLE, MERGED BACKTEST BUTTON ---
+            if st.button("🚀 Run Vectorized Backtest", type="primary", key="run_single_backtest_btn"):
                 with st.spinner(f"Crunching {years} years of historical data..."):
+
+                    # Pass ALL parameters, including the new oos_split!
                     curves_df, metrics_df = run_vectorized_backtest(
-                        test_tickers, years, strategy_type, custom_query, stop_loss / 100, take_profit / 100
+                        test_tickers, years, strategy_type, custom_query, stop_loss / 100, take_profit / 100, oos_split / 100
                     )
+
+                    # Display the charts and metrics
                     if not curves_df.empty:
                         st.subheader("Equity Curve: Strategy vs Buy & Hold")
                         st.line_chart(curves_df)
@@ -272,6 +313,30 @@ with tab4:
                         strat_name = custom_query if strategy_type == "Custom AI Strategy" else strategy_type
                         analysis = analyze_backtest_with_ai(st.session_state.backtest_metrics, test_tickers, strat_name)
                         st.info(analysis)
+
+                # --- AGENTIC FEEDBACK LOOP ---
+                if custom_query and st.session_state.get("backtest_metrics") is not None and not st.session_state.backtest_metrics.empty:
+                    st.divider()
+                    st.markdown("### 🛠️ Agentic Strategy Optimizer")
+                    st.markdown("Is the drawdown too high? Let the AI rewrite your math to make the strategy safer.")
+
+                    if st.button("🪄 Auto-Optimize Custom Query", type="secondary"):
+                        with st.spinner("AI Risk Manager is tightening your risk parameters..."):
+                            new_query = optimize_strategy_with_ai(
+                                custom_query,
+                                st.session_state.backtest_metrics,
+                                test_tickers
+                            )
+
+                            if not new_query.startswith("Error"):
+                                # Overwrite the old strategy with the new, safer one
+                                st.session_state.tech_query = new_query
+                                st.success(f"Strategy Optimized! New Logic: `{new_query}`")
+
+                                # Force Streamlit to refresh the UI immediately
+                                st.rerun()
+                            else:
+                                st.error(new_query)
 
         elif mode == "Parameter Optimizer (Grid Search)":
             # --- NEW GRID SEARCH CODE ---
