@@ -10,3 +10,4 @@ numba<2.3
 lxml
 curl_cffi
 google-genai
+matplotlib

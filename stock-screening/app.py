@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 from ai_engine import generate_master_strategy
 from backtest_engine import run_vectorized_backtest, analyze_backtest_with_ai, run_grid_search_optimization, optimize_strategy_with_ai
 from notifier import send_telegram_alert
+from macro_engine import get_market_regime
+from alt_data_engine import check_smart_money
+from sector_engine import get_sector_performance
 
 
 # --- PLAYWRIGHT CLOUD FIX (RUNS ONLY ONCE) ---
@@ -49,35 +52,95 @@ if 'technical_winners' not in st.session_state:
 if 'fund_strategy_text' not in st.session_state:
     st.session_state.fund_strategy_text = ""
 
+# ==========================================
+# ONBOARDING: QUICK START GUIDE
+# ==========================================
+with st.expander("🚀 Quick Start Guide: How to use this Quant Terminal", expanded=False):
+    st.markdown("""
+    Welcome to your Systematic Trading Terminal. This tool removes human emotion from investing by using strict quantitative math and AI. 
+    
+    ### 📅 Your Daily 3:00 PM Routine:
+    * **Step 1: Check the Weather (Tab 0):** Look at the **Macro Traffic Light**. If the market is Red (Bear), do not trade. If it is Green (Bull), note the top-performing sectors in the Heatmap.
+    * **Step 2: Ask the AI (Tab 0):** Type a plain-English idea into the **Agentic Idea Generator** (e.g., *"Find me high-growth midcaps in the Auto sector pulling back to their 50-day moving average"*). 
+    * **Step 3: Fundamental Screen (Tab 1):** Paste the AI's fundamental code here and click Run. This filters out the garbage and leaves you with fundamentally elite companies.
+    * **Step 4: Technical Filter (Tab 2):** Paste the AI's technical code here and click Run. This checks the live charts to ensure you are buying at the exact right mathematical moment.
+    * **Step 5: Verify & Size Your Bet (Tabs 3, 4, & 5):** Check if Institutions are buying (Tab 3) and ensure no Earnings are due tomorrow (Tab 4). Finally, calculate your risk in **Tab 5**.
+    
+    ---
+    
+    ### 🧠 Demystifying Tab 5 (Risk & Backtest)
+    Tab 5 is the most important tab in this terminal. It tells you if your strategy actually works, and exactly how many shares you should buy. Here is how to read it:
+
+    * **1. Win Rate:** If this is 40%, it means out of 100 trades, you will lose money on 60 of them. *This is normal in trend following!* As long as your winning trades are much bigger than your losing trades, you make money.
+    * **2. Sharpe Ratio:** This measures how "bumpy" the ride is. 
+        * Below 1.0 = Too risky for the reward.
+        * 1.0 to 1.5 = Good, solid strategy.
+        * Above 1.5 = Excellent.
+    * **3. Maximum Drawdown:** The terrifying "worst-case scenario." If this says -25%, it means at some point in the past, this strategy lost 25% of its value before recovering. Ask yourself: *Can my stomach handle that?*
+    * **4. The Kelly Criterion (%):**  This is the magic number. It uses a mathematical formula to tell you exactly what percentage of your total account you should invest in this one stock to maximize growth without going broke. 
+        * **The Golden Rule:** The math is aggressive. Always cut the Kelly % in half (called "Half-Kelly") to protect yourself from unpredictable market crashes. If Kelly says 10%, you only risk 5%.
+    """)
+
 # --- Create the Tabs ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Fundamentals", "📈 Technicals", "🤖 AI Analyst", "🧪 Backtesting"])
+tab_macro, tab1, tab2, tab_smart_money, tab3, tab4 = st.tabs([
+    "🚦 0. Command Center",
+    "1. Fundamental Screen",
+    "2. Technical Engine",
+    "3. Smart Money",
+    "4. AI CIO (News)",
+    "5. Risk & Backtest"
+])
 
 # ==========================================
-# 🤖 MASTER AI STRATEGIST (Place right above Tab 1)
+# TAB 0: MACRO COMMAND CENTER
 # ==========================================
-with st.expander("🤖 Agentic Idea Generator: Chat-to-Portfolio", expanded=False):
-    st.markdown("Type a trading idea in plain English. The AI will instantly generate the Fundamental Screener and Technical Math for you.")
+with tab_macro:
+    st.header("Global Macro & AI Strategy")
+    st.markdown("Assess the market regime, follow the sector money flow, and generate your strategy.")
 
-    user_idea = st.text_area("What is your trading strategy?", placeholder="e.g., 'Find me highly liquid dividend-paying mega-caps that are currently crashing and severely oversold.'")
+    # 1. Agentic Idea Generator
+    with st.expander("🤖 Agentic Idea Generator: Chat-to-Portfolio", expanded=True):
+        user_idea = st.text_input("Describe your trading idea in plain English:")
+        if st.button("Generate Strategy"):
+            with st.spinner("AI is translating your idea into Quant logic..."):
+                strategy_dict = generate_master_strategy(user_idea)
 
-    if st.button("✨ Generate Strategy", type="primary"):
-        with st.spinner("Translating idea into Quantitative Math..."):
+                if "error" not in strategy_dict:
+                    st.session_state.auto_fundamental = strategy_dict.get("fundamental", "")
+                    st.session_state.auto_technical = strategy_dict.get("technical", "")
+                    st.success("Strategy Generated! Proceed to Tab 1.")
+                    st.json(strategy_dict)
+                else:
+                    st.error(f"AI Error: {strategy_dict['error']}")
 
-            # Call the LLM to generate the JSON
-            strategy_dict = generate_master_strategy(user_idea)
+    # 2. Macro Traffic Light
+    st.markdown("### 🚦 Macro Traffic Light: Market Regime")
+    regime_data = get_market_regime()
+    if "error" not in regime_data:
+        st.info(f"**Current Regime:** {regime_data['regime']}  \n**Systematic Action:** {regime_data['action']}")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Nifty 50", regime_data['nifty'])
+        col2.metric("India VIX", regime_data['vix'])
+        col3.metric("Nifty 50-Day SMA", regime_data['sma_50'])
+        col4.metric("Nifty 200-Day SMA", regime_data['sma_200'])
+    else:
+        st.warning(f"Could not load Market Regime data. Error: {regime_data['error']}")
 
-            if "error" not in strategy_dict:
-                # Save the exact math to memory
-                st.session_state.auto_fundamental = strategy_dict.get("fundamental", "")
-                st.session_state.auto_technical = strategy_dict.get("technical", "")
+    st.markdown("---")
 
-                st.success("✅ Strategy Generated! The inputs in Tab 1 and Tab 2 have been auto-filled.")
-                st.info(f"**AI Rationale:** {strategy_dict.get('explanation', '')}")
-
-                st.code(f"Fundamental: {st.session_state.auto_fundamental}")
-                st.code(f"Technical: {st.session_state.auto_technical}")
+    # 3. Sector Rotation Heatmap
+    with st.expander("📊 Macro Dashboard: Sector Rotation Heatmap", expanded=True): # Set to True so it's open by default here
+        with st.spinner("Calculating sector momentum..."):
+            sector_df = get_sector_performance()
+            if not sector_df.empty:
+                styled_df = sector_df.style.background_gradient(cmap="RdYlGn", vmin=-10, vmax=10)
+                st.dataframe(styled_df, use_container_width=True)
+                top_sector = sector_df.index[0]
+                st.success(f"🔥 **Hot Sector Alert:** {top_sector} is leading the market.")
             else:
-                st.error(f"Failed to generate strategy: {strategy_dict['error']}")
+                st.warning("Sector data is currently unavailable.")
+
+    st.markdown("---")
 
 # ==========================================
 # TAB 1: FUNDAMENTAL SCREENING
@@ -192,6 +255,38 @@ with tab2:
                         st.error("Failed to generate pandas query.")
 
 # ==========================================
+# TAB 3: SMART MONEY TRACKER (ALT DATA)
+# ==========================================
+with tab_smart_money:
+    st.header("Step 3: Smart Money & Insider Tracking")
+    st.markdown("Verify if Institutions and Insiders are buying the stocks your math just selected.")
+
+    # Check if we have winners from Tab 2
+    if 'technical_winners' not in st.session_state or not st.session_state.technical_winners:
+        st.warning("⚠️ Please run the Technical Engine (Tab 2) first to generate a watchlist.")
+    else:
+        st.success(f"Found {len(st.session_state.technical_winners)} stocks ready for Smart Money analysis.")
+
+        if st.button("🔍 Scan for Insider & Institutional Buying", type="primary"):
+            with st.spinner("Querying block deals and insider holdings..."):
+
+                # Extract the list of winning tickers from session state
+                # (Assuming st.session_state.technical_winners is a list of strings like ['RELIANCE.NS', 'TCS.NS'])
+                winners_list = st.session_state.technical_winners
+
+                # Run the Alt Data Engine
+                smart_money_df = check_smart_money(winners_list)
+
+                if not smart_money_df.empty:
+                    st.dataframe(smart_money_df, use_container_width=True)
+
+                    # Highlight strong institutional backing
+                    st.info("💡 **Quant Rule:** If Institutional Ownership is high (>40%) and Insider Activity is detected, the mathematical breakout has a significantly higher probability of success.")
+                else:
+                    st.error("Failed to retrieve Alternative Data.")
+
+
+# ==========================================
 # TAB 3: AI CIO / RAG ANALYST
 # ==========================================
 with tab3:
@@ -268,7 +363,7 @@ with tab4:
     custom_query = st.session_state.get("tech_query", None)
 
     st.warning("⚠️ Run Tab 2 to backtest your winners, or enter a manual ticker below:")
-    manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):", "RELIANCE.NS")
+    manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):")
     if manual_ticker:
         test_tickers = [manual_ticker]
 
