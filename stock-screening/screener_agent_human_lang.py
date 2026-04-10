@@ -97,11 +97,14 @@ def run_screener_query(query_string):
 
             page.fill("input[name='username']", email)
             page.fill("input[name='password']", password)
-            page.click("button[type='submit']")
-            page.wait_for_load_state("networkidle")
+            with page.expect_navigation(wait_until="domcontentloaded"):
+                page.click("button[type='submit']")
+            print("SUBMIT Clicked")
+            # page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("load")
 
             print("Running query...")
-            page.goto("https://www.screener.in/screen/raw/")
+            page.goto("https://www.screener.in/screen/new/", wait_until="domcontentloaded")
             page.fill("textarea[name='query']", query_string)
             page.click("button:has-text('Run this query')")
 
