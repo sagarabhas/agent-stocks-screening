@@ -134,8 +134,8 @@ def run_screener_query(query_string):
                 next_button = page.locator("a", has_text="Next").first
 
                 if next_button.is_visible():
-                    next_button.click()
-                    page.wait_for_load_state("networkidle")
+                    with page.expect_navigation(wait_until="domcontentloaded"):
+                        next_button.click()
                     page.wait_for_timeout(1000)
                     page_number += 1
                 else:
