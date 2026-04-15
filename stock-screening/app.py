@@ -147,11 +147,7 @@ with tab_macro:
 # ==========================================
 with tab1:
     st.header("Step 1: Fundamental Screening")
-    i: int = 0
-    j: int = 0
-    qwer
-    while True:
-        i=i+1
+
 
     # 1. Grab the AI-generated query if it exists
     default_fund = st.session_state.get("auto_fundamental", "")
