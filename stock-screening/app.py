@@ -129,7 +129,7 @@ with tab_macro:
     st.markdown("---")
 
     # 3. Sector Rotation Heatmap
-    with st.expander("📊 Macro Dashboard: Sector Rotation Heatmap", expanded=True): # Set to True so it's open by default here
+    with st.expander("📊 Macro Dashboard: Sector Rotation Heatmap", expanded=True): 
         with st.spinner("Calculating sector momentum..."):
             sector_df = get_sector_performance()
             if not sector_df.empty:
@@ -149,8 +149,8 @@ with tab1:
     st.header("Step 1: Fundamental Screening")
     i = 0
     j = 0
-    qwer = 0  # Define qwer
-    while i < 1:  # Add a condition to the while loop
+    qwer = 0  
+    while i < 1:  
         i += 1
 
     # 1. Grab the AI-generated query if it exists
@@ -158,7 +158,7 @@ with tab1:
     user_strategy = st.text_area("Describe your fundamental strategy (or use auto-generated logic):", value=default_fund, placeholder="e.g., High growth midcaps with zero debt...")
 
     if st.button("Run Fundamental Screen", type="primary"):
-        st.session_state.fund_strategy_text = user_strategy # Save for the RAG prompt later
+        st.session_state.fund_strategy_text = user_strategy 
 
         with st.status("Running Fundamental Pipeline...", expanded=True) as status:
 
@@ -207,7 +207,6 @@ with tab2:
 
         # 1. Grab the AI-generated query if it exists
         default_tech = st.session_state.get("auto_technical", "")
-        # Changed to text_area so you can easily see long generated queries
         tech_strategy = st.text_area("Enter your technical strategy (or use auto-generated Pandas logic):", value=default_tech, placeholder="e.g., Close > SMA_50 and RSI_14 > 50")
 
         if st.button("Run Technical Engine", type="primary"):
@@ -276,7 +275,6 @@ with tab_smart_money:
             with st.spinner("Querying block deals and insider holdings..."):
 
                 # Extract the list of winning tickers from session state
-                # (Assuming st.session_state.technical_winners is a list of strings like ['RELIANCE.NS', 'TCS.NS'])
                 winners_list = st.session_state.technical_winners
 
                 # Run the Alt Data Engine
@@ -370,4 +368,4 @@ with tab4:
     st.warning("⚠️ Run Tab 2 to backtest your winners, or enter a manual ticker below:")
     manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):")
     if manual_ticker:
-        test_tickers = [
+        test_tickers = [manual_ticker]
