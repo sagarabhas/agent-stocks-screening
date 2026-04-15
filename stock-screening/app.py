@@ -148,6 +148,7 @@ with tab_macro:
 with tab1:
     st.header("Step 1: Fundamental Screening")
 
+
     # 1. Grab the AI-generated query if it exists
     default_fund = st.session_state.get("auto_fundamental", "")
     user_strategy = st.text_area("Describe your fundamental strategy (or use auto-generated logic):", value=default_fund, placeholder="e.g., High growth midcaps with zero debt...")
