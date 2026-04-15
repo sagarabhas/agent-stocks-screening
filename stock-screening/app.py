@@ -129,7 +129,7 @@ with tab_macro:
     st.markdown("---")
 
     # 3. Sector Rotation Heatmap
-    with st.expander("📊 Macro Dashboard: Sector Rotation Heatmap", expanded=True): # Set to True so it's open by default here
+    with st.expander("📊 Macro Dashboard: Sector Rotation Heatmap", expanded=True): 
         with st.spinner("Calculating sector momentum..."):
             sector_df = get_sector_performance()
             if not sector_df.empty:
@@ -147,18 +147,18 @@ with tab_macro:
 # ==========================================
 with tab1:
     st.header("Step 1: Fundamental Screening")
-    i: int = 0
-    j: int = 0
-    qwer
-    while True:
-        i=i+1
+    i = 0
+    j = 0
+    qwer = 0  
+    while i < 1:  
+        i += 1
 
     # 1. Grab the AI-generated query if it exists
     default_fund = st.session_state.get("auto_fundamental", "")
     user_strategy = st.text_area("Describe your fundamental strategy (or use auto-generated logic):", value=default_fund, placeholder="e.g., High growth midcaps with zero debt...")
 
     if st.button("Run Fundamental Screen", type="primary"):
-        st.session_state.fund_strategy_text = user_strategy # Save for the RAG prompt later
+        st.session_state.fund_strategy_text = user_strategy 
 
         with st.status("Running Fundamental Pipeline...", expanded=True) as status:
 
@@ -207,7 +207,6 @@ with tab2:
 
         # 1. Grab the AI-generated query if it exists
         default_tech = st.session_state.get("auto_technical", "")
-        # Changed to text_area so you can easily see long generated queries
         tech_strategy = st.text_area("Enter your technical strategy (or use auto-generated Pandas logic):", value=default_tech, placeholder="e.g., Close > SMA_50 and RSI_14 > 50")
 
         if st.button("Run Technical Engine", type="primary"):
@@ -276,7 +275,6 @@ with tab_smart_money:
             with st.spinner("Querying block deals and insider holdings..."):
 
                 # Extract the list of winning tickers from session state
-                # (Assuming st.session_state.technical_winners is a list of strings like ['RELIANCE.NS', 'TCS.NS'])
                 winners_list = st.session_state.technical_winners
 
                 # Run the Alt Data Engine
@@ -371,111 +369,3 @@ with tab4:
     manual_ticker = st.text_input("Enter Ticker (e.g., RELIANCE.NS):")
     if manual_ticker:
         test_tickers = [manual_ticker]
-
-    if test_tickers:
-        st.success(f"Target Tickers: {', '.join(test_tickers)}")
-
-        if mode == "Single Strategy Test":
-            # --- EXISTING SINGLE STRATEGY CODE ---
-            if custom_query:
-                st.info(f"**Loaded Custom AI Strategy:** `{custom_query}`")
-                strategy_options = ["Custom AI Strategy", "SMA Crossover (50 vs 200)", "RSI Mean Reversion (<30 Buy)"]
-            else:
-                strategy_options = ["SMA Crossover (50 vs 200)", "RSI Mean Reversion (<30 Buy)"]
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                years = st.slider("Backtest Period (Years)", 1, 10, 4, key="single_yrs")
-                stop_loss = st.number_input("Hard Stop-Loss % (0 to disable)", min_value=0.0, max_value=100.0, value=8.0, step=1.0)
-            with col2:
-                strategy_type = st.selectbox("Strategy to Test", strategy_options)
-                take_profit = st.number_input("Take-Profit % (0 to disable)", min_value=0.0, max_value=500.0, value=25.0, step=1.0)
-            with col3:
-                # NEW: Walk-Forward Toggle
-                st.markdown("**Walk-Forward Validation**")
-                oos_split = st.slider("Out-of-Sample Split %", min_value=0, max_value=50, value=25, step=5,
-                                      help="Reserves the final X% of the timeline as a blind test to prevent curve-fitting.")
-
-            # --- THE SINGLE, MERGED BACKTEST BUTTON ---
-            if st.button("🚀 Run Vectorized Backtest", type="primary", key="run_single_backtest_btn"):
-                with st.spinner(f"Crunching {years} years of historical data..."):
-
-                    # Pass ALL parameters, including the new oos_split!
-                    curves_df, metrics_df = run_vectorized_backtest(
-                        test_tickers, years, strategy_type, custom_query, stop_loss / 100, take_profit / 100, oos_split / 100
-                    )
-
-                    # Display the charts and metrics
-                    if not curves_df.empty:
-                        st.subheader("Equity Curve: Strategy vs Buy & Hold")
-                        st.line_chart(curves_df)
-                        st.subheader("Performance Metrics")
-                        st.dataframe(metrics_df, use_container_width=True)
-                        st.session_state.backtest_metrics = metrics_df
-                    else:
-                        st.error("🛑 CRITICAL FAILURE: The backtest engine crashed or returned empty data.")
-
-            if st.session_state.get("backtest_metrics") is not None and not st.session_state.backtest_metrics.empty:
-                if st.button("🤖 Ask AI to Analyze these results"):
-                    with st.spinner("Consulting Chief Quant Officer..."):
-                        strat_name = custom_query if strategy_type == "Custom AI Strategy" else strategy_type
-                        analysis = analyze_backtest_with_ai(st.session_state.backtest_metrics, test_tickers, strat_name)
-                        st.info(analysis)
-
-                # --- AGENTIC FEEDBACK LOOP ---
-                if custom_query and st.session_state.get("backtest_metrics") is not None and not st.session_state.backtest_metrics.empty:
-                    st.divider()
-                    st.markdown("### 🛠️ Agentic Strategy Optimizer")
-                    st.markdown("Is the drawdown too high? Let the AI rewrite your math to make the strategy safer.")
-
-                    if st.button("🪄 Auto-Optimize Custom Query", type="secondary"):
-                        with st.spinner("AI Risk Manager is tightening your risk parameters..."):
-                            new_query = optimize_strategy_with_ai(
-                                custom_query,
-                                st.session_state.backtest_metrics,
-                                test_tickers
-                            )
-
-                            if not new_query.startswith("Error"):
-                                # Overwrite the old strategy with the new, safer one
-                                st.session_state.tech_query = new_query
-                                st.success(f"Strategy Optimized! New Logic: `{new_query}`")
-
-                                # Force Streamlit to refresh the UI immediately
-                                st.rerun()
-                            else:
-                                st.error(new_query)
-
-        elif mode == "Parameter Optimizer (Grid Search)":
-            # --- NEW GRID SEARCH CODE ---
-            st.markdown("Find the mathematically optimal SMA combination for your first target ticker.")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                opt_years = st.slider("Backtest Period (Years)", 1, 10, 3, key="opt_yrs")
-            with col2:
-                st.markdown("**Fast SMA Range**")
-                fast_start = st.number_input("Start", value=10, step=5)
-                fast_end = st.number_input("End", value=50, step=5)
-                fast_step = st.number_input("Step", value=5, key="f_step")
-            with col3:
-                st.markdown("**Slow SMA Range**")
-                slow_start = st.number_input("Start", value=50, step=10)
-                slow_end = st.number_input("End", value=200, step=10)
-                slow_step = st.number_input("Step", value=10, key="s_step")
-
-            if st.button("🔍 Run Grid Search", type="primary"):
-                target_ticker = test_tickers[0] # Optimize one stock at a time
-                with st.spinner(f"Simulating hundreds of variations for {target_ticker}..."):
-                    opt_df = run_grid_search_optimization(
-                        target_ticker, opt_years,
-                        (fast_start, fast_end, fast_step),
-                        (slow_start, slow_end, slow_step),
-                        8.0 / 100, # Hardcoded default SL for optimizer
-                        25.0 / 100 # Hardcoded default TP for optimizer
-                    )
-
-                    if not opt_df.empty:
-                        st.success(f"✅ Optimization complete! Displaying top 10 combinations.")
-                        st.dataframe(opt_df.head(10), use_container_width=True)
-                    else:
-                        st.error("Optimizer failed. Check inputs.")
